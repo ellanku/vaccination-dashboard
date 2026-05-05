@@ -31,9 +31,11 @@ const ALL_VACCINES = '';
 
 export interface GeographyChartProps {
   vaccines: VaccineOption[];
+  startDate?: string;
+  endDate?: string;
 }
 
-export function GeographyChart({ vaccines }: GeographyChartProps) {
+export function GeographyChart({ vaccines, startDate, endDate }: GeographyChartProps) {
   const [vaccineId, setVaccineId] = useState<string>(ALL_VACCINES);
   const [rows, setRows] = useState<RegionalUptakeRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,10 +44,12 @@ export function GeographyChart({ vaccines }: GeographyChartProps) {
     let cancelled = false;
     setRows(null);
     setError(null);
-    const url = vaccineId === ALL_VACCINES
-      ? '/api/geography'
-      : `/api/geography?vaccine=${vaccineId}`;
-    fetch(url)
+    const qs = new URLSearchParams();
+    if (vaccineId !== ALL_VACCINES) qs.set('vaccine', vaccineId);
+    if (startDate) qs.set('startDate', startDate);
+    if (endDate) qs.set('endDate', endDate);
+    const query = qs.toString();
+    fetch(query ? `/api/geography?${query}` : '/api/geography')
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return (await r.json()) as RegionalUptakeResponse;
@@ -59,7 +63,7 @@ export function GeographyChart({ vaccines }: GeographyChartProps) {
     return () => {
       cancelled = true;
     };
-  }, [vaccineId]);
+  }, [vaccineId, startDate, endDate]);
 
   return (
     <section className="flex flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm">

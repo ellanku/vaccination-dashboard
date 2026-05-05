@@ -1,13 +1,19 @@
 /*
  * GET /api/demographics?vaccine=<id>&dimension=<ethnicity|age_band|risk_group>
+ *                       [&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD]
  *
  * Returns uptake rate per demographic group for the given vaccine.
+ * Optional startDate/endDate filter restricts the *vaccinated* numerator
+ * to vaccinations administered within the window; the eligible-cohort
+ * denominator is unaffected.
+ *
  * See lib/db.ts → getDemographicUptake for the underlying SQL.
  */
 
 import { NextRequest } from 'next/server';
 import {
   getDemographicUptake,
+  parseDateRange,
   DEMOGRAPHIC_DIMENSIONS,
   type DemographicDimension,
   type DemographicUptakeResponse,
@@ -43,7 +49,13 @@ export async function GET(
     return Response.json(body, { status: 400 });
   }
 
-  const rows = getDemographicUptake(vaccineId, dimension);
+  const dr = parseDateRange(params.get('startDate'), params.get('endDate'));
+  if (dr.error) {
+    const body: ApiError = { error: dr.error };
+    return Response.json(body, { status: 400 });
+  }
+
+  const rows = getDemographicUptake(vaccineId, dimension, dr.startDate, dr.endDate);
   const body: DemographicUptakeResponse = { vaccine_id: vaccineId, dimension, rows };
   return Response.json(body);
 }

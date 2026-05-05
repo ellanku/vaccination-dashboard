@@ -1,9 +1,8 @@
 /*
- * ConversionChart — invitation conversion per channel.
+ * ReminderChart — invitation conversion effectiveness by reminder count.
  *
- * Stacked bar chart: converted (NHS blue) at the bottom, not-converted
- * (slate) on top, both sharing a stackId so each channel's total bar height
- * equals total invitations. No filters — the full corpus is shown.
+ * Bar chart showing conversion percentage for each reminder band (0, 1, 2, 3+).
+ * Demonstrates whether additional reminders improve vaccination conversion rates.
  */
 
 'use client';
@@ -13,22 +12,21 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
 import { ChartArea } from './FilterBar';
-import type { ChannelConversionResponse, ChannelConversionRow } from '@/lib/db';
+import type { ReminderConversionResponse, ReminderConversionRow } from '@/lib/db';
 
-export interface ConversionChartProps {
+export interface ReminderChartProps {
   startDate?: string;
   endDate?: string;
 }
 
-export function ConversionChart({ startDate, endDate }: ConversionChartProps = {}) {
-  const [rows, setRows] = useState<ChannelConversionRow[] | null>(null);
+export function ReminderChart({ startDate, endDate }: ReminderChartProps = {}) {
+  const [rows, setRows] = useState<ReminderConversionRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -39,10 +37,10 @@ export function ConversionChart({ startDate, endDate }: ConversionChartProps = {
     if (startDate) qs.set('startDate', startDate);
     if (endDate) qs.set('endDate', endDate);
     const query = qs.toString();
-    fetch(query ? `/api/conversion?${query}` : '/api/conversion')
+    fetch(query ? `/api/reminders?${query}` : '/api/reminders')
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return (await r.json()) as ChannelConversionResponse;
+        return (await r.json()) as ReminderConversionResponse;
       })
       .then((res) => {
         if (!cancelled) setRows(res.rows);
@@ -58,10 +56,10 @@ export function ConversionChart({ startDate, endDate }: ConversionChartProps = {
   return (
     <section className="flex flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <header className="mb-3">
-        <h2 className="text-lg font-semibold text-slate-900">Invitation conversion</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Reminder effectiveness</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Of every invitation sent, how many resulted in a vaccination — split by the
-          channel the invitation was sent through.
+          Vaccination conversion rate by number of reminders sent to patients.
+          Shows whether additional reminders improve uptake.
         </p>
       </header>
 
@@ -74,7 +72,11 @@ export function ConversionChart({ startDate, endDate }: ConversionChartProps = {
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={rows ?? []} margin={{ top: 16, right: 12, bottom: 8, left: -8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-            <XAxis dataKey="channel" tick={{ fontSize: 12, fill: '#475569' }} />
+            <XAxis
+              dataKey="reminder_count"
+              label={{ value: 'Number of reminders', position: 'insideBottom', offset: -4 }}
+              tick={{ fontSize: 12, fill: '#475569' }}
+            />
             <YAxis tick={{ fontSize: 12, fill: '#475569' }} allowDecimals={false} />
             <Tooltip
               cursor={{ fill: '#f1f5f9' }}
@@ -84,27 +86,18 @@ export function ConversionChart({ startDate, endDate }: ConversionChartProps = {
                 fontSize: 12,
                 boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
               }}
-              formatter={(value, name, item) => {
-                if (name === 'Converted') {
-                  const row = item.payload as ChannelConversionRow;
-                  return [`${value} (${row.conversion_pct}%)`, name];
+              formatter={(value, name) => {
+                if (name === 'conversion_pct') {
+                  return [`${value}%`, 'Conversion rate'];
                 }
                 return [String(value), name];
               }}
+              labelFormatter={(label) => `${label} reminder${label !== '1' ? 's' : ''}`}
             />
-            <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
             <Bar
-              dataKey="converted"
-              name="Converted"
-              stackId="invitations"
+              dataKey="conversion_pct"
+              name="Conversion rate"
               fill="#005EB8"
-              maxBarSize={80}
-            />
-            <Bar
-              dataKey="not_converted"
-              name="Not converted"
-              stackId="invitations"
-              fill="#cbd5e1"
               maxBarSize={80}
               radius={[4, 4, 0, 0]}
             />

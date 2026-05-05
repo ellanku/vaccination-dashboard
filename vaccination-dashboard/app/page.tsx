@@ -6,16 +6,15 @@
  * data from the API based on its own filter state.
  */
 
-import { getVaccines } from '@/lib/db';
-import { DemographicChart } from '@/components/DemographicChart';
-import { GeographyChart } from '@/components/GeographyChart';
-import { ConversionChart } from '@/components/ConversionChart';
+import { getVaccines, getDateBounds } from '@/lib/db';
+import { DashboardShell } from '@/components/DashboardShell';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export default function Home() {
   const vaccines = getVaccines();
+  const dateBounds = getDateBounds();
 
   return (
     <div className="flex min-h-screen flex-1 flex-col">
@@ -38,17 +37,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8 sm:px-8">
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
-          <DemographicChart vaccines={vaccines} />
-          <GeographyChart vaccines={vaccines} />
-          {/* On lg, the third card spans both columns so there's no awkward
-              empty space; on xl it returns to a single column. */}
-          <div className="lg:col-span-2 xl:col-span-1">
-            <ConversionChart />
-          </div>
-        </div>
-      </main>
+      <DashboardShell vaccines={vaccines} dateBounds={dateBounds} />
 
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto max-w-7xl px-6 py-4 sm:px-8">

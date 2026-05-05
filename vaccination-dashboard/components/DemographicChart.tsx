@@ -33,9 +33,11 @@ const DIMENSION_OPTIONS = [
 
 export interface DemographicChartProps {
   vaccines: VaccineOption[];
+  startDate?: string;
+  endDate?: string;
 }
 
-export function DemographicChart({ vaccines }: DemographicChartProps) {
+export function DemographicChart({ vaccines, startDate, endDate }: DemographicChartProps) {
   const [vaccineId, setVaccineId] = useState<number>(vaccines[0]?.vaccine_id ?? 1);
   const [dimension, setDimension] = useState<DemographicDimension>('ethnicity');
   const [rows, setRows] = useState<DemographicUptakeRow[] | null>(null);
@@ -45,7 +47,10 @@ export function DemographicChart({ vaccines }: DemographicChartProps) {
     let cancelled = false;
     setRows(null);
     setError(null);
-    fetch(`/api/demographics?vaccine=${vaccineId}&dimension=${dimension}`)
+    const qs = new URLSearchParams({ vaccine: String(vaccineId), dimension });
+    if (startDate) qs.set('startDate', startDate);
+    if (endDate) qs.set('endDate', endDate);
+    fetch(`/api/demographics?${qs.toString()}`)
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return (await r.json()) as DemographicUptakeResponse;
@@ -59,7 +64,7 @@ export function DemographicChart({ vaccines }: DemographicChartProps) {
     return () => {
       cancelled = true;
     };
-  }, [vaccineId, dimension]);
+  }, [vaccineId, dimension, startDate, endDate]);
 
   const vaccineName = vaccines.find((v) => v.vaccine_id === vaccineId)?.vaccine_name ?? '';
 

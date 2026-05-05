@@ -84,6 +84,25 @@ export interface ChannelConversionResponse {
   rows: ChannelConversionRow[];
 }
 
+export interface ReminderConversionRow {
+  reminder_count: string;
+  total_invitations: number;
+  converted: number;
+  not_converted: number;
+  conversion_pct: number;
+}
+
+export interface ReminderConversionResponse {
+  rows: ReminderConversionRow[];
+}
+
+export interface KpiData {
+  total_patients: number;
+  overall_coverage_pct: number;
+  conversion_pct: number;
+  lowest_coverage_region: string;
+}
+
 export interface ApiError {
   error: string;
 }
@@ -159,6 +178,59 @@ export function getVaccines(): VaccineOption[] {
 }
 
 // ---------------------------------------------------------------------
+// Date range bounds
+// ---------------------------------------------------------------------
+
+export interface DateBounds {
+  min_date: string;
+  max_date: string;
+}
+
+export function getDateBounds(): DateBounds {
+  // Per the Feature 4 spec: default range is the earliest invitation_date in
+  // the dataset through to today.
+  const stmt = getDb().prepare<[], DateBounds>(`
+    SELECT
+      DATE((SELECT MIN(invitation_date) FROM Invitation)) AS min_date,
+      DATE('now') AS max_date
+  `);
+  const result = stmt.get();
+  return result || {
+    min_date: '2024-01-01',
+    max_date: '2024-12-31',
+  };
+}
+
+// ---------------------------------------------------------------------
+// Date-range query-param validator shared by route handlers
+// ---------------------------------------------------------------------
+
+export interface ParsedDateRange {
+  startDate: string | undefined;
+  endDate: string | undefined;
+  error: string | null;
+}
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function parseDateRange(
+  startRaw: string | null,
+  endRaw: string | null,
+): ParsedDateRange {
+  if (startRaw !== null && startRaw !== '' && !ISO_DATE_RE.test(startRaw)) {
+    return { startDate: undefined, endDate: undefined, error: 'Query param "startDate" must be YYYY-MM-DD.' };
+  }
+  if (endRaw !== null && endRaw !== '' && !ISO_DATE_RE.test(endRaw)) {
+    return { startDate: undefined, endDate: undefined, error: 'Query param "endDate" must be YYYY-MM-DD.' };
+  }
+  return {
+    startDate: startRaw && startRaw !== '' ? startRaw : undefined,
+    endDate: endRaw && endRaw !== '' ? endRaw : undefined,
+    error: null,
+  };
+}
+
+// ---------------------------------------------------------------------
 // Query 1 — Demographic uptake
 // JOINs: Patient (CTE) → Vaccine → Vaccination
 // ---------------------------------------------------------------------
@@ -197,9 +269,14 @@ const ORDER_EXPRESSION_BY_DIMENSION: Record<DemographicDimension, string> = {
 export function getDemographicUptake(
   vaccineId: number,
   dimension: DemographicDimension,
+  startDate?: string,
+  endDate?: string,
 ): DemographicUptakeRow[] {
   const groupExpr = GROUP_EXPRESSION_BY_DIMENSION[dimension];
   const orderExpr = ORDER_EXPRESSION_BY_DIMENSION[dimension];
+  const dateFilter = startDate && endDate
+    ? `AND vac.date_administered >= @startDate AND vac.date_administered <= @endDate`
+    : '';
   const sql = `
     WITH ${PATIENT_AGE_CTE},
     eligible AS (
@@ -218,11 +295,12 @@ export function getDemographicUptake(
     FROM eligible pa
     LEFT JOIN Vaccination vac
       ON vac.patient_id = pa.patient_id AND vac.vaccine_id = @vaccine
+      ${dateFilter}
     GROUP BY group_label
     ORDER BY ${orderExpr}, group_label
   `;
-  const stmt = getDb().prepare<{ vaccine: number }, DemographicUptakeRow>(sql);
-  return stmt.all({ vaccine: vaccineId });
+  const stmt = getDb().prepare<{ vaccine: number; startDate?: string; endDate?: string }, DemographicUptakeRow>(sql);
+  return stmt.all({ vaccine: vaccineId, startDate, endDate });
 }
 
 // ---------------------------------------------------------------------
@@ -230,12 +308,15 @@ export function getDemographicUptake(
 // JOINs: Patient → Vaccination → Clinic
 // ---------------------------------------------------------------------
 
-export function getRegionalUptake(vaccineId: number | null): RegionalUptakeRow[] {
+export function getRegionalUptake(vaccineId: number | null, startDate?: string, endDate?: string): RegionalUptakeRow[] {
   // Region for the denominator comes from the patient's postcode (Patient
   // has no region column per the brief). It's computed in a CTE so
   // GROUP BY pwr.region is unambiguous — without that, SQLite resolves
   // `region` to Clinic.region and silently drops unvaccinated patients
   // (whose joined Clinic row is NULL after the LEFT JOIN).
+  const dateFilter = startDate && endDate
+    ? `AND vac.date_administered >= @startDate AND vac.date_administered <= @endDate`
+    : '';
   const sql = `
     WITH patient_with_region AS (
       SELECT p.patient_id, ${POSTCODE_TO_REGION_SQL} AS region
@@ -252,14 +333,15 @@ export function getRegionalUptake(vaccineId: number | null): RegionalUptakeRow[]
     LEFT JOIN Vaccination vac
       ON vac.patient_id = pwr.patient_id
      AND (@vaccine IS NULL OR vac.vaccine_id = @vaccine)
+     ${dateFilter}
     LEFT JOIN Clinic c
       ON c.clinic_id = vac.clinic_id
     WHERE pwr.region IS NOT NULL
     GROUP BY pwr.region
     ORDER BY pwr.region
   `;
-  const stmt = getDb().prepare<{ vaccine: number | null }, RegionalUptakeRow>(sql);
-  return stmt.all({ vaccine: vaccineId });
+  const stmt = getDb().prepare<{ vaccine: number | null; startDate?: string; endDate?: string }, RegionalUptakeRow>(sql);
+  return stmt.all({ vaccine: vaccineId, startDate, endDate });
 }
 
 // ---------------------------------------------------------------------
@@ -267,7 +349,10 @@ export function getRegionalUptake(vaccineId: number | null): RegionalUptakeRow[]
 // JOINs: Invitation LEFT JOIN Vaccination
 // ---------------------------------------------------------------------
 
-export function getChannelConversion(): ChannelConversionRow[] {
+export function getChannelConversion(startDate?: string, endDate?: string): ChannelConversionRow[] {
+  const dateFilter = startDate && endDate
+    ? `WHERE i.invitation_date >= @startDate AND i.invitation_date <= @endDate`
+    : '';
   const sql = `
     SELECT
       i.channel,
@@ -279,9 +364,127 @@ export function getChannelConversion(): ChannelConversionRow[] {
       END AS conversion_pct
     FROM Invitation i
     LEFT JOIN Vaccination v ON v.invitation_id = i.invitation_id
+    ${dateFilter}
     GROUP BY i.channel
     ORDER BY conversion_pct DESC
   `;
-  const stmt = getDb().prepare<[], ChannelConversionRow>(sql);
-  return stmt.all();
+  const stmt = getDb().prepare<{ startDate?: string; endDate?: string }, ChannelConversionRow>(sql);
+  return stmt.all({ startDate, endDate });
+}
+
+// ---------------------------------------------------------------------
+// Query 4 — KPI summary cards
+// Aggregates total patients, overall coverage, conversion %, lowest region
+// ---------------------------------------------------------------------
+
+export function getKpis(startDate?: string, endDate?: string): KpiData {
+  const vaccDateFilter = startDate && endDate
+    ? `AND vac.date_administered >= @startDate AND vac.date_administered <= @endDate`
+    : '';
+  const invitationDateFilter = startDate && endDate
+    ? `AND i.invitation_date >= @startDate AND i.invitation_date <= @endDate`
+    : '';
+  const sql = `
+    WITH ${PATIENT_AGE_CTE},
+    patient_with_region AS (
+      SELECT p.patient_id, ${POSTCODE_TO_REGION_SQL} AS region
+      FROM Patient p
+    ),
+    patient_vaccinated AS (
+      SELECT DISTINCT vac.patient_id
+      FROM Vaccination vac
+      WHERE 1=1 ${vaccDateFilter}
+    ),
+    regional_uptake AS (
+      SELECT
+        pwr.region,
+        ROUND(100.0 * COUNT(DISTINCT vac.patient_id) / COUNT(DISTINCT pwr.patient_id), 1) AS uptake_pct
+      FROM patient_with_region pwr
+      LEFT JOIN Vaccination vac ON vac.patient_id = pwr.patient_id ${vaccDateFilter}
+      WHERE pwr.region IS NOT NULL
+      GROUP BY pwr.region
+    ),
+    lowest_region AS (
+      SELECT region FROM regional_uptake
+      WHERE uptake_pct = (SELECT MIN(uptake_pct) FROM regional_uptake)
+      LIMIT 1
+    )
+    SELECT
+      COUNT(DISTINCT p.patient_id) AS total_patients,
+      CASE WHEN COUNT(DISTINCT p.patient_id) = 0 THEN 0
+           ELSE ROUND(100.0 * COUNT(DISTINCT pv.patient_id) / COUNT(DISTINCT p.patient_id), 1)
+      END AS overall_coverage_pct,
+      CASE WHEN COUNT(*) = 0 THEN 0
+           ELSE ROUND(100.0 * COUNT(DISTINCT v.vaccination_id) / COUNT(DISTINCT i.invitation_id), 1)
+      END AS conversion_pct,
+      COALESCE((SELECT region FROM lowest_region), 'N/A') AS lowest_coverage_region
+    FROM Patient p
+    LEFT JOIN patient_vaccinated pv ON pv.patient_id = p.patient_id
+    CROSS JOIN Invitation i
+    LEFT JOIN Vaccination v ON v.invitation_id = i.invitation_id
+    WHERE 1=1 ${invitationDateFilter}
+  `;
+  const stmt = getDb().prepare<{ startDate?: string; endDate?: string }, KpiData>(sql);
+  const result = stmt.get({ startDate, endDate });
+  return result || {
+    total_patients: 0,
+    overall_coverage_pct: 0,
+    conversion_pct: 0,
+    lowest_coverage_region: 'N/A',
+  };
+}
+
+// ---------------------------------------------------------------------
+// Query 5 — Reminder effectiveness
+// JOINs: Invitation → Reminder → Vaccination
+// Groups by reminder count (0, 1, 2, 3+) and calculates conversion per group
+// ---------------------------------------------------------------------
+
+export function getReminderConversion(startDate?: string, endDate?: string): ReminderConversionRow[] {
+  const dateFilter = startDate && endDate
+    ? `WHERE i.invitation_date >= @startDate AND i.invitation_date <= @endDate`
+    : '';
+  const sql = `
+    WITH invitation_reminder_count AS (
+      SELECT
+        i.invitation_id,
+        COUNT(r.reminder_id) AS reminder_count
+      FROM Invitation i
+      LEFT JOIN Reminder r ON r.invitation_id = i.invitation_id
+      ${dateFilter}
+      GROUP BY i.invitation_id
+    ),
+    invitation_with_reminders AS (
+      SELECT
+        irc.invitation_id,
+        CASE
+          WHEN irc.reminder_count = 0 THEN '0'
+          WHEN irc.reminder_count = 1 THEN '1'
+          WHEN irc.reminder_count = 2 THEN '2'
+          ELSE '3+'
+        END AS reminder_band,
+        CASE WHEN v.vaccination_id IS NOT NULL THEN 1 ELSE 0 END AS converted
+      FROM invitation_reminder_count irc
+      LEFT JOIN Vaccination v ON v.invitation_id = irc.invitation_id
+    )
+    SELECT
+      reminder_band AS reminder_count,
+      COUNT(*) AS total_invitations,
+      SUM(converted) AS converted,
+      COUNT(*) - SUM(converted) AS not_converted,
+      CASE WHEN COUNT(*) = 0 THEN 0
+           ELSE ROUND(100.0 * SUM(converted) / COUNT(*), 1)
+      END AS conversion_pct
+    FROM invitation_with_reminders
+    GROUP BY reminder_band
+    ORDER BY
+      CASE reminder_band
+        WHEN '0' THEN 1
+        WHEN '1' THEN 2
+        WHEN '2' THEN 3
+        ELSE 4
+      END
+  `;
+  const stmt = getDb().prepare<{ startDate?: string; endDate?: string }, ReminderConversionRow>(sql);
+  return stmt.all({ startDate, endDate });
 }
