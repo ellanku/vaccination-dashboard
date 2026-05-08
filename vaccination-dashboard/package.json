@@ -12,6 +12,7 @@
     "seed": "npm run seed:generate && npm run seed:apply"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.3",
     "better-sqlite3": "^12.9.0",
     "next": "16.2.4",
     "react": "19.2.4",
