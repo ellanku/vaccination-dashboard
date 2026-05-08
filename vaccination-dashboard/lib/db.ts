@@ -1,15 +1,10 @@
-/*
- * Database access layer.
- *
- * Centralises every SQL query the dashboard runs so route handlers stay thin
- * and the storage backend can be swapped (e.g. SQLite → Turso/libSQL) without
- * touching the rest of the app. To migrate to Turso, replace the connection
- * setup and convert each exported function to return Promises — the row
- * shapes and SQL stay the same.
- *
- * Connection model: a single read-only better-sqlite3 handle, cached on
- * globalThis so Next.js HMR doesn't open a new file handle on every reload.
- */
+// All the SQL queries used by the API routes live in this file. The route
+// handlers just call these functions, which keeps SQL out of the rest of
+// the app and makes it easier to swap SQLite for Turso later (the queries
+// would stay the same, but the functions would need to be async).
+//
+// The connection is cached on globalThis so Next.js HMR doesn't reopen the
+// database file every time you save during dev.
 
 import Database from 'better-sqlite3';
 import { join } from 'node:path';
@@ -28,9 +23,7 @@ function getDb(): Database.Database {
   return db;
 }
 
-// ---------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------
+// Types used by both the queries below and the API route handlers.
 
 export type DemographicDimension = 'ethnicity' | 'age_band' | 'risk_group';
 
@@ -67,8 +60,8 @@ export interface ChannelConversionRow {
   conversion_pct: number;
 }
 
-// API response envelope shapes. Routes return these; the client can rely on
-// the `rows` key being present even when the result set is empty.
+// Response shapes returned by the API routes. Wrapping rows in an object
+// means the client always gets the same shape, even when the result is empty.
 export interface DemographicUptakeResponse {
   vaccine_id: number;
   dimension: DemographicDimension;
@@ -107,13 +100,12 @@ export interface ApiError {
   error: string;
 }
 
-// ---------------------------------------------------------------------
-// Shared SQL fragments
-// ---------------------------------------------------------------------
+// Bits of SQL reused across several queries below.
 
-// Postcode → region mapping. The seed generator uses prefix sets that are
-// mutually unambiguous, so a single CASE on the first two characters suffices
-// (with one fallback for the single-letter Manchester prefix 'M').
+// Maps a postcode to its NHS region. The seed generator picks postcode
+// prefixes that don't overlap, so checking the first two characters is
+// enough for almost everything. The single-letter 'M' fallback catches
+// Manchester postcodes (M1, M2, etc.) where the second character is a digit.
 const POSTCODE_TO_REGION_SQL = `
   CASE substr(p.postcode, 1, 2)
     WHEN 'SW' THEN 'London'
@@ -134,8 +126,9 @@ const POSTCODE_TO_REGION_SQL = `
   END
 `;
 
-// Eligible-cohort predicate keyed on @vaccine. Mirrors the cohort caps used
-// by the seed generator so numerator and denominator are on the same cohort.
+// Decides whether a patient counts as "eligible" for a given vaccine. The
+// age caps here have to match the seed generator, otherwise we'd end up
+// with patients in the eligible count who could never have been vaccinated.
 const ELIGIBLE_COHORT_SQL = `
   pa.age_months >= v.minimum_age_months
   AND (
@@ -146,10 +139,10 @@ const ELIGIBLE_COHORT_SQL = `
   )
 `;
 
-// Patient ages are derived at query time from date_of_birth, per the brief.
-// julianday is leap-year aware; the /365.25 and /30.4375 divisors give the
-// standard floor-of-completed-years and approximate-completed-months that
-// match the seed generator's age math.
+// Works out each patient's age at query time from date_of_birth. julianday
+// handles leap years for us. Dividing by 365.25 gives years and 30.4375
+// gives months (the average days per month). Casting to INTEGER floors
+// the result so we get whole completed years/months.
 const PATIENT_AGE_CTE = `
   patient_age AS (
     SELECT
@@ -164,10 +157,7 @@ const PATIENT_AGE_CTE = `
   )
 `;
 
-// ---------------------------------------------------------------------
-// Vaccine dropdown options
-// ---------------------------------------------------------------------
-
+// Pulls the list of vaccines for the dropdowns on the dashboard.
 export function getVaccines(): VaccineOption[] {
   const stmt = getDb().prepare<[], VaccineOption>(`
     SELECT vaccine_id, vaccine_name
@@ -177,18 +167,14 @@ export function getVaccines(): VaccineOption[] {
   return stmt.all();
 }
 
-// ---------------------------------------------------------------------
-// Date range bounds
-// ---------------------------------------------------------------------
-
+// Used to set the default range on the date-range filter.
 export interface DateBounds {
   min_date: string;
   max_date: string;
 }
 
 export function getDateBounds(): DateBounds {
-  // Per the Feature 4 spec: default range is the earliest invitation_date in
-  // the dataset through to today.
+  // Default range runs from the earliest invitation we have through to today.
   const stmt = getDb().prepare<[], DateBounds>(`
     SELECT
       DATE((SELECT MIN(invitation_date) FROM Invitation)) AS min_date,
@@ -201,9 +187,8 @@ export function getDateBounds(): DateBounds {
   };
 }
 
-// ---------------------------------------------------------------------
-// Date-range query-param validator shared by route handlers
-// ---------------------------------------------------------------------
+// Validates the startDate/endDate query params on the API routes. Pulled
+// out so the same check isn't repeated in every route handler.
 
 export interface ParsedDateRange {
   startDate: string | undefined;
@@ -230,10 +215,8 @@ export function parseDateRange(
   };
 }
 
-// ---------------------------------------------------------------------
-// Query 1 — Demographic uptake
-// JOINs: Patient (CTE) → Vaccine → Vaccination
-// ---------------------------------------------------------------------
+// Uptake percentage per demographic group, for one vaccine.
+// Joins Patient (via a CTE for ages) → Vaccine → Vaccination.
 
 const GROUP_EXPRESSION_BY_DIMENSION: Record<DemographicDimension, string> = {
   ethnicity: 'pa.ethnicity',
@@ -249,7 +232,8 @@ const GROUP_EXPRESSION_BY_DIMENSION: Record<DemographicDimension, string> = {
   `,
 };
 
-// Stable display order so charts don't re-shuffle bars between requests.
+// Forces a fixed order on the bars so the chart doesn't shuffle between
+// requests. Without this, SQLite's GROUP BY ordering isn't guaranteed.
 const ORDER_EXPRESSION_BY_DIMENSION: Record<DemographicDimension, string> = {
   ethnicity: `CASE pa.ethnicity
     WHEN 'White' THEN 1 WHEN 'Asian' THEN 2 WHEN 'Black' THEN 3
@@ -303,17 +287,10 @@ export function getDemographicUptake(
   return stmt.all({ vaccine: vaccineId, startDate, endDate });
 }
 
-// ---------------------------------------------------------------------
-// Query 2 — Geographic comparison
-// JOINs: Patient → Vaccination → Clinic
-// ---------------------------------------------------------------------
-
+// Uptake per NHS region. Joins Patient → Vaccination → Clinic.
+// Region is worked out from postcode in a CTE because Patient itself
+// doesn't have a region column.
 export function getRegionalUptake(vaccineId: number | null, startDate?: string, endDate?: string): RegionalUptakeRow[] {
-  // Region for the denominator comes from the patient's postcode (Patient
-  // has no region column per the brief). It's computed in a CTE so
-  // GROUP BY pwr.region is unambiguous — without that, SQLite resolves
-  // `region` to Clinic.region and silently drops unvaccinated patients
-  // (whose joined Clinic row is NULL after the LEFT JOIN).
   const dateFilter = startDate && endDate
     ? `AND vac.date_administered >= @startDate AND vac.date_administered <= @endDate`
     : '';
@@ -344,11 +321,8 @@ export function getRegionalUptake(vaccineId: number | null, startDate?: string, 
   return stmt.all({ vaccine: vaccineId, startDate, endDate });
 }
 
-// ---------------------------------------------------------------------
-// Query 3 — Invitation conversion by channel
-// JOINs: Invitation LEFT JOIN Vaccination
-// ---------------------------------------------------------------------
-
+// Conversion rate (invitations that turned into a vaccination) grouped by
+// the channel the invitation was sent through. Joins Invitation to Vaccination.
 export function getChannelConversion(startDate?: string, endDate?: string): ChannelConversionRow[] {
   const dateFilter = startDate && endDate
     ? `WHERE i.invitation_date >= @startDate AND i.invitation_date <= @endDate`
@@ -372,11 +346,10 @@ export function getChannelConversion(startDate?: string, endDate?: string): Chan
   return stmt.all({ startDate, endDate });
 }
 
-// ---------------------------------------------------------------------
-// Query 4 — KPI summary cards
-// Aggregates total patients, overall coverage, conversion %, lowest region
-// ---------------------------------------------------------------------
-
+// Returns all four KPI numbers in one query: total patients, overall
+// coverage %, invitation conversion %, and the region with the lowest
+// uptake. Doing it as one query saves the Overview tab from making
+// four round trips.
 export function getKpis(startDate?: string, endDate?: string): KpiData {
   const vaccDateFilter = startDate && endDate
     ? `AND vac.date_administered >= @startDate AND vac.date_administered <= @endDate`
@@ -434,12 +407,9 @@ export function getKpis(startDate?: string, endDate?: string): KpiData {
   };
 }
 
-// ---------------------------------------------------------------------
-// Query 5 — Reminder effectiveness
-// JOINs: Invitation → Reminder → Vaccination
-// Groups by reminder count (0, 1, 2, 3+) and calculates conversion per group
-// ---------------------------------------------------------------------
-
+// Looks at how the conversion rate changes with the number of reminders
+// sent. Buckets invitations into 0, 1, 2, or 3+ reminders. Joins
+// Invitation, Reminder, and Vaccination.
 export function getReminderConversion(startDate?: string, endDate?: string): ReminderConversionRow[] {
   const dateFilter = startDate && endDate
     ? `WHERE i.invitation_date >= @startDate AND i.invitation_date <= @endDate`

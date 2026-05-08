@@ -1,16 +1,12 @@
-/*
- * Shared UI primitives for the dashboard's chart cards.
- *
- * Exports:
- *   - <FilterBar>    — flex wrapper that lays out one or more FilterSelects
- *   - <FilterSelect> — labelled <select> with NHS-blue focus styling
- *   - <ChartArea>    — shows loading / error / empty states; renders children
- *                      only when data is ready
- *
- * Kept dumb on purpose: each chart owns its own filter state and passes
- * value/onChange down. Avoids context, avoids generics, plays nicely with
- * server-side rendering.
- */
+// Small UI building blocks reused by the chart cards.
+//
+// FilterBar is just a flex wrapper for one or more FilterSelects.
+// FilterSelect is a styled <select> with the NHS blue focus ring.
+// ChartArea handles the loading / error / empty states so each chart
+// component doesn't have to reimplement them.
+//
+// None of these hold state. The chart that uses them owns the filter
+// values and passes value/onChange in.
 
 import type { ReactNode } from 'react';
 

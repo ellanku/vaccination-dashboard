@@ -1,10 +1,7 @@
-/*
- * TabNav — navigation tabs for the dashboard sections.
- *
- * Four tabs: Overview, Demographics, Geography, Outreach.
- * Active tab shown in NHS blue (#005EB8), inactive in slate grey.
- * ARIA tabs role, keyboard navigation (arrow keys, Enter), tab selection.
- */
+// Top navigation for the four dashboard tabs (Overview, Demographics,
+// Geography, Outreach). Active tab is NHS blue; the others are slate grey.
+// Uses the ARIA tabs pattern and supports keyboard navigation with the
+// arrow keys plus Enter or Space to activate.
 
 interface TabNavProps {
   activeTab: 'overview' | 'demographics' | 'geography' | 'outreach';

@@ -1,10 +1,7 @@
-/*
- * ConversionChart — invitation conversion per channel.
- *
- * Stacked bar chart: converted (NHS blue) at the bottom, not-converted
- * (slate) on top, both sharing a stackId so each channel's total bar height
- * equals total invitations. No filters — the full corpus is shown.
- */
+// Stacked bar chart showing invitation conversion per channel.
+// Converted (NHS blue) sits at the bottom, not-converted (slate) on top,
+// sharing a stackId so the total bar height equals the total invitations
+// for that channel. The only filter is the global date range from the page.
 
 'use client';
 

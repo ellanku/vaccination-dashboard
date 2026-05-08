@@ -1,10 +1,7 @@
-/*
- * GeographyChart — total population vs. vaccinated count per region.
- *
- * Grouped bar chart with two series. The uptake percentage is rendered as a
- * label above each region's vaccinated bar so the gap is readable at a
- * glance. The vaccine dropdown defaults to "All vaccines" (no filter).
- */
+// Grouped bar chart with two bars per region: total population and
+// vaccinated count. The uptake percentage sits above the vaccinated bar
+// so you can read the gap at a glance. Vaccine dropdown defaults to
+// "All vaccines" (no filter applied).
 
 'use client';
 

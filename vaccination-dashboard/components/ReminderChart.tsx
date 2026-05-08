@@ -1,9 +1,7 @@
-/*
- * ReminderChart — invitation conversion effectiveness by reminder count.
- *
- * Bar chart showing conversion percentage for each reminder band (0, 1, 2, 3+).
- * Demonstrates whether additional reminders improve vaccination conversion rates.
- */
+// Bar chart showing how the conversion rate changes with the number of
+// reminders sent. Buckets are 0, 1, 2, and 3+ reminders. The point is to
+// see whether sending more reminders actually pushes more people to get
+// vaccinated.
 
 'use client';
 

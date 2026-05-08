@@ -1,14 +1,12 @@
-/*
- * GET /api/demographics?vaccine=<id>&dimension=<ethnicity|age_band|risk_group>
- *                       [&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD]
- *
- * Returns uptake rate per demographic group for the given vaccine.
- * Optional startDate/endDate filter restricts the *vaccinated* numerator
- * to vaccinations administered within the window; the eligible-cohort
- * denominator is unaffected.
- *
- * See lib/db.ts → getDemographicUptake for the underlying SQL.
- */
+// GET /api/demographics?vaccine=<id>&dimension=<ethnicity|age_band|risk_group>
+//                      [&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD]
+//
+// Returns the uptake rate for one vaccine, broken down by the chosen
+// demographic dimension. If a date range is given, it only filters the
+// vaccinated count, not the eligible cohort, so the percentage shows
+// "of all eligible patients, how many got vaccinated in this window".
+//
+// SQL lives in lib/db.ts (getDemographicUptake).
 
 import { NextRequest } from 'next/server';
 import {
@@ -20,9 +18,9 @@ import {
   type ApiError,
 } from '@/lib/db';
 
-// better-sqlite3 is a native module → must run on Node, never Edge.
+// better-sqlite3 is a native module so this has to run on Node, not Edge.
 export const runtime = 'nodejs';
-// Always read live from the DB file; never cache at build/request layer.
+// We always want a live read from the DB, so don't let Next.js cache.
 export const dynamic = 'force-dynamic';
 
 function isDimension(v: string | null): v is DemographicDimension {

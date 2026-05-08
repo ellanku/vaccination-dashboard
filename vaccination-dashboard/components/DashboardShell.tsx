@@ -1,11 +1,8 @@
-/*
- * DashboardShell — client-side container for tab + date-range state.
- *
- * Holds (1) the active tab and (2) the global date range (initialised from
- * the dataset's bounds passed in by app/page.tsx). Renders TabNav and the
- * DateRangeFilter, then conditionally renders the appropriate panel,
- * threading startDate/endDate down to every chart and the KPI panel.
- */
+// Client-side wrapper that holds the dashboard's interactive state:
+// which tab is active and the current date range. The date range is
+// initialised from the bounds the page passes in (earliest invitation
+// to today). Both pieces of state are passed down to whichever panel
+// is currently being rendered.
 
 'use client';
 

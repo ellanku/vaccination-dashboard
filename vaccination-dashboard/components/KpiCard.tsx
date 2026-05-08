@@ -1,9 +1,6 @@
-/*
- * KpiCard — individual key performance indicator card.
- *
- * Displays a label, value, and optional unit in a bordered card with
- * consistent styling across the dashboard.
- */
+// One KPI card. Shows a label and a big number, with an optional unit
+// (e.g. "%"). The highlight prop swaps in the NHS blue colour scheme for
+// the headline metric on the Overview tab.
 
 interface KpiCardProps {
   label: string;

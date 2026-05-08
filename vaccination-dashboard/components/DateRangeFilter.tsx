@@ -1,11 +1,10 @@
-/*
- * DateRangeFilter — global date range filter for the dashboard.
- *
- * Two native HTML date inputs and a Reset button. Renders an "active range"
- * label only when the current range differs from the dataset's default
- * (earliest invitation_date → today). State is owned by DashboardShell —
- * this component is a pure controlled widget.
- */
+// Global date range filter used by every tab. Two native date inputs
+// plus a Reset button. The "Filtered: ... to ..." label only appears when
+// the user has actually narrowed the range away from the default (which
+// is earliest invitation date through to today).
+//
+// This is a controlled component. DashboardShell owns the state and just
+// passes the values and change handlers in.
 
 'use client';
 

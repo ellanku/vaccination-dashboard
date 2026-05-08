@@ -1,9 +1,5 @@
-/*
- * OverviewPanel — dashboard KPI summary cards.
- *
- * Fetches KPI data from /api/kpis and displays four cards:
- * total patients, overall coverage %, conversion %, lowest-coverage region.
- */
+// The contents of the Overview tab. Pulls the four KPI numbers from
+// /api/kpis (one request, not four) and renders them as cards.
 
 'use client';
 

@@ -1,9 +1,7 @@
-/*
- * DemographicChart — uptake percentage per demographic group for one vaccine.
- *
- * Owns its own filter state (vaccine + dimension) and re-fetches from
- * /api/demographics whenever either dropdown changes.
- */
+// Bar chart showing uptake percentage by demographic group for one vaccine.
+// Has two dropdowns (vaccine and dimension) and refetches from
+// /api/demographics whenever either dropdown changes, or when the date
+// range filter from the page changes.
 
 'use client';
 
