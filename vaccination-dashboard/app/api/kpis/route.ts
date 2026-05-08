@@ -27,6 +27,6 @@ export async function GET(request: NextRequest): Promise<Response> {
     return Response.json(body, { status: 400 });
   }
 
-  const data: KpiData = getKpis(dr.startDate, dr.endDate);
+  const data: KpiData = await getKpis(dr.startDate, dr.endDate);
   return Response.json(data);
 }

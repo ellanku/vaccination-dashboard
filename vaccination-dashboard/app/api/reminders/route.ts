@@ -28,7 +28,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     return Response.json(body, { status: 400 });
   }
 
-  const rows = getReminderConversion(dr.startDate, dr.endDate);
+  const rows = await getReminderConversion(dr.startDate, dr.endDate);
   const body: ReminderConversionResponse = { rows };
   return Response.json(body);
 }

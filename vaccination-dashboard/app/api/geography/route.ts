@@ -43,7 +43,7 @@ export async function GET(
     return Response.json(body, { status: 400 });
   }
 
-  const rows = getRegionalUptake(vaccineId, dr.startDate, dr.endDate);
+  const rows = await getRegionalUptake(vaccineId, dr.startDate, dr.endDate);
   const body: RegionalUptakeResponse = { vaccine_id: vaccineId, rows };
   return Response.json(body);
 }

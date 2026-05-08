@@ -12,9 +12,11 @@ import { DashboardShell } from '@/components/DashboardShell';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export default function Home() {
-  const vaccines = getVaccines();
-  const dateBounds = getDateBounds();
+export default async function Home() {
+  const [vaccines, dateBounds] = await Promise.all([
+    getVaccines(),
+    getDateBounds(),
+  ]);
 
   return (
     <div className="flex min-h-screen flex-1 flex-col">

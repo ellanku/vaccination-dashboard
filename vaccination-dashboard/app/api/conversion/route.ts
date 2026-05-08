@@ -27,7 +27,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     return Response.json(body, { status: 400 });
   }
 
-  const rows = getChannelConversion(dr.startDate, dr.endDate);
+  const rows = await getChannelConversion(dr.startDate, dr.endDate);
   const body: ChannelConversionResponse = { rows };
   return Response.json(body);
 }

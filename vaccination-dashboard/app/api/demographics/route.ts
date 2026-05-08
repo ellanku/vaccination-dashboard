@@ -18,7 +18,8 @@ import {
   type ApiError,
 } from '@/lib/db';
 
-// better-sqlite3 is a native module so this has to run on Node, not Edge.
+// Use the Node runtime (libSQL client works on edge too, but staying on
+// Node keeps things simple and lets us share one connection setup).
 export const runtime = 'nodejs';
 // We always want a live read from the DB, so don't let Next.js cache.
 export const dynamic = 'force-dynamic';
@@ -53,7 +54,7 @@ export async function GET(
     return Response.json(body, { status: 400 });
   }
 
-  const rows = getDemographicUptake(vaccineId, dimension, dr.startDate, dr.endDate);
+  const rows = await getDemographicUptake(vaccineId, dimension, dr.startDate, dr.endDate);
   const body: DemographicUptakeResponse = { vaccine_id: vaccineId, dimension, rows };
   return Response.json(body);
 }
